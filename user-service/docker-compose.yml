@@ -1,0 +1,33 @@
+version: '3'
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL: PLAINTEXT
+      KAFKA_ADVERTISED_LISTENER_NAME_INTERNAL: kafka:9092
+      KAFKA_ADVERTISED_LISTENER_PROTOCOL: PLAINTEXT
+      KAFKA_LISTENER_NAME_INTERNAL: INTERNAL
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper
+
+  user-service:
+    build: .
+    environment:
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: user-service
+      KAFKA_SSL: "false"
+      KAFKA_CONSUMER_ENABLED: "true"
+      KAFKA_TOPIC_AUTH: auth-events
+      KAFKA_TOPIC_AUDIT: audit-events
+    depends_on:
+      - kafka

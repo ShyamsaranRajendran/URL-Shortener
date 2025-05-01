@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import { LogIn, Lock, Mail } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'react-toastify';
-
+// const backendUrl = process.env.NEXT_PUBLIC_BACKEND_SERVICE_URL;
 interface LoginFormData {
   email: string;
   password: string;

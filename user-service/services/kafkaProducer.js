@@ -23,19 +23,27 @@ const sendEvent = async (topic, event) => {
     
     await producer.send({
       topic,
-      messages: [
-        {
-          value: JSON.stringify({
-            ...event,
-            timestamp: new Date().toISOString(),
-            service: 'user-service'
-          })
-        }
-      ]
+      messages: [{
+        value: JSON.stringify({
+          ...event,
+          timestamp: new Date().toISOString(),
+          service: 'user-service'
+        })
+      }]
     });
   } catch (err) {
     logger.error(`Failed to send event to ${topic}`, err);
-    // Implement fallback mechanism here if needed
+    // Fallback to database if Kafka fails
+    if (topic === 'audit-events') {
+      try {
+        await require('../config/db').query(
+          'INSERT INTO audit_logs (user_id, action, metadata) VALUES ($1, $2, $3)',
+          [event.userId || null, event.action, event.metadata || {}]
+        );
+      } catch (dbError) {
+        logger.error('Failed to fallback to database for audit log', dbError);
+      }
+    }
   }
 };
 

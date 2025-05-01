@@ -1,5 +1,5 @@
 // utils/antifraud.js
-const redis = require('./redis');
+const redis = require('../config/redis'); // Adjust the path as necessary
 
 const MAX_ATTEMPTS = 5; // Maximum login attempts allowed
 const LOCKOUT_TIME = 10 * 60; // 10 minutes lockout time

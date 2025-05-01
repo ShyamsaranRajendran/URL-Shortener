@@ -1,367 +1,260 @@
-// // controllers/authController.js
-// const jwt = require('jsonwebtoken');
-// const User = require('../models/User');
-// const bcrypt = require('bcrypt');
-// const { v4: uuidv4 } = require('uuid');
-// const redis = require('../utils/redis');
-// const sendEmail = require('../utils/sendEmail');
-// const bruteForceProtection = require('../utils/antifraud');
-// const sessionValidator = require('../utils/sessionValidation');
-// const detectAnomalies = require('../utils/anomalyDetection');
-
-// // Register new user
-// exports.register = async (req, res) => {
-//   const { name, email, password } = req.body;
-//   if (!email || !password) return res.status(400).json({ success: false, message: 'Email and password required' });
-
-//   const userExists = await User.findByEmail(email);
-//   if (userExists) return res.status(400).json({ success: false, message: 'User already exists' });
-
-//   const user = await User.create(name, email, password);
-//   const token = uuidv4();
-//   await redis.set(`verify:${token}`, user.id, 'EX', 60 * 60);
-
-//   const verifyLink = `${process.env.BASE_URL}/verify-email?token=${token}`;
-//   await sendEmail(user.email, 'Verify your account', `Click this link to verify: ${verifyLink}`, `<p>Click <a href="${verifyLink}">here</a> to verify your email.</p>`);
-
-//   res.status(201).json({ success: true, message: 'Check email to verify account' });
-// };
-
-// // Email verification
-// exports.verifyEmail = async (req, res) => {
-//   const { token } = req.query;
-//   const userId = await redis.get(`verify:${token}`);
-//   if (!userId) return res.status(400).json({ success: false, message: 'Invalid or expired token' });
-
-//   await User.markEmailVerified(userId);
-//   await redis.del(`verify:${token}`);
-
-//   res.json({ success: true, message: 'Email verified' });
-// };
-
-// // Request password reset
-// exports.requestPasswordReset = async (req, res) => {
-//   const { email } = req.body;
-//   const user = await User.findByEmail(email);
-//   if (!user) return res.json({ success: true }); // If not found, return silently.
-
-//   const token = uuidv4();
-//   await redis.set(`reset:${token}`, user.id, 'EX', 30 * 60);
-//   const resetLink = `${process.env.BASE_URL}/reset-password?token=${token}`;
-//   await sendEmail(user.email, 'Reset your password', `Click this link to reset your password: ${resetLink}`, `<p>Click <a href="${resetLink}">here</a> to reset your password.</p>`);
-
-//   res.json({ success: true, message: 'If the email is registered, you’ll receive a reset link' });
-// };
-
-// // Reset password
-// exports.resetPassword = async (req, res) => {
-//   const { newPassword } = req.body;
-//   const { token } = req.query;
-//   const userId = await redis.get(`reset:${token}`);
-//   if (!userId) return res.status(400).json({ success: false, message: 'Invalid or expired token' });
-
-//   const hashed = await bcrypt.hash(newPassword, 10);
-//   await User.updatePassword(userId, hashed);
-//   await redis.del(`reset:${token}`);
-
-//   res.json({ success: true, message: 'Password updated' });
-// };
-
-// // Login
-// exports.login = [
-//   bruteForceProtection, // Prevent brute-force attacks
-//   async (req, res) => {
-//     const { email, password } = req.body;
-//     const user = await User.findByEmail(email);
-//     if (!user || !(await bcrypt.compare(password, user.password))) {
-//       return res.status(401).json({ success: false, message: 'Invalid credentials' });
-//     }
-
-//     const payload = { id: user.id, email: user.email, roles: user.roles, verified: user.emailverified };
-//     const accessToken = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '15m' });
-
-//     const sessionId = uuidv4();
-//     const refreshToken = jwt.sign({ ...payload, sessionId }, process.env.JWT_REFRESH_SECRET, { expiresIn: '7d' });
-
-//     await redis.set(`session:${user.id}:${sessionId}`, refreshToken, 'EX', 7 * 24 * 60 * 60); // expire in 7 days
-//     res.cookie('refreshToken', refreshToken, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'Strict', maxAge: 7 * 24 * 60 * 60 * 1000 });
-
-//     res.json({ success: true, accessToken, roles: user.roles });
-//   },
-// ];
-
-// // Refresh Token
-// exports.refreshToken = [
-//   sessionValidator, // Validate session against IP/User-Agent
-//   detectAnomalies,  // Detect if login is from a new device/IP
-//   async (req, res) => {
-//     const oldToken = req.cookies.refreshToken;
-//     if (!oldToken) return res.status(401).json({ success: false, message: 'No token provided' });
-
-//     try {
-//       const decoded = jwt.verify(oldToken, process.env.JWT_REFRESH_SECRET);
-//       const sessionKey = `session:${decoded.id}:${decoded.sessionId}`;
-//       const sessionExists = await redis.get(sessionKey);
-//       if (!sessionExists) return res.status(403).json({ success: false, message: 'Session expired or invalid' });
-
-//       const newRefreshToken = jwt.sign({ id: decoded.id, email: decoded.email }, process.env.JWT_REFRESH_SECRET, { expiresIn: '7d' });
-//       const accessToken = jwt.sign({ id: decoded.id, email: decoded.email }, process.env.JWT_SECRET, { expiresIn: '15m' });
-
-//       const metadata = JSON.parse(sessionExists); // preserve session metadata
-//       const newSessionKey = `session:${decoded.id}:${newRefreshToken}`;
-
-//       await redis.multi()
-//         .del(sessionKey)
-//         .set(newSessionKey, JSON.stringify(metadata), 'EX', 7 * 24 * 60 * 60)
-//         .exec();
-
-//       res.cookie('refreshToken', newRefreshToken, { httpOnly: true, secure: true });
-//       res.json({ success: true, accessToken });
-//     } catch (err) {
-//       res.status(403).json({ success: false, message: 'Invalid token' });
-//     }
-//   },
-// ];
-
-// // Force Logout by Admin
-// exports.forceLogout = async (req, res) => {
-//   const { userId } = req.params;
-//   if (!req.user.isAdmin) return res.status(403).json({ message: 'Forbidden' });
-
-//   const keys = await redis.keys(`session:${userId}:*`);
-//   if (keys.length) await redis.del(...keys);
-//   res.json({ success: true, message: `User ${userId} sessions revoked` });
-// };
-
-
-// exports.verifyEmail = async (req, res) => {
-//   const { token } = req.query;
-
-//   const userId = await redis.get(`verify:${token}`);
-//   if (!userId) return res.status(400).json({ success: false, message: 'Invalid or expired token' });
-
-//   await User.markEmailVerified(userId);
-//   await redis.del(`verify:${token}`);
-
-//   res.json({ success: true, message: 'Email verified' });
-// };
-
-// exports.requestPasswordReset = async (req, res) => {
-//   const { email } = req.body;
-//   const user = await User.findByEmail(email);
-//   if (!user) return res.json({ success: true }); 
-//   const token = uuidv4();
-//   await redis.set(`reset:${token}`, user.id, 'EX', 60 * 30); 
-//   const resetLink = `${process.env.BASE_URL}/reset-password?token=${token}`;
-//   await sendEmail(
-//     user.email,
-//     'Verify your account',
-//     `Click this link to verify: ${resetLink}`,
-//     `<p>Click <a href="${resetLink}">here</a> to verify your email.</p>`
-//   );
-//   res.json({ success: true, message: 'If the email is registered, you’ll receive a reset link' });
-// };
-
-// exports.resetPassword = async (req, res) => {
-//   const { newPassword } = req.body;
-//   const { token } = req.query;
-//   const userId = await redis.get(`reset:${token}`);
-//   if (!userId) return res.status(400).json({ success: false, message: 'Invalid or expired token' });
-
-//   const hashed = await bcrypt.hash(newPassword, 10);
-//   await User.updatePassword(userId, hashed);
-//   await redis.del(`reset:${token}`);
-
-//   res.json({ success: true, message: 'Password updated' });
-// };
-
-
-// exports.login = async (req, res) => {
-//   const { email, password } = req.body;
-
-//   const user = await User.findByEmail(email);
-//   if (!user || !(await bcrypt.compare(password, user.password))) {
-//     return res.status(401).json({ success: false, message: 'Invalid credentials' });
-//   }
-
-//   const payload = { id: user.id, email: user.email, roles: user.roles, verified: user.emailverified };
-
-//   const accessToken = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '15m' });
-
-//   const sessionId = uuidv4();
-//   const refreshToken = jwt.sign({ ...payload, sessionId }, process.env.JWT_REFRESH_SECRET, { expiresIn: '7d' });
-
-//   await redis.set(`session:${user.id}:${sessionId}`, refreshToken, 'EX', 7 * 24 * 60 * 60); // expire in 7 days
-
-//   res
-//     .cookie('refreshToken', refreshToken, {
-//       httpOnly: true,
-//       secure: process.env.NODE_ENV === 'production',
-//       sameSite: 'Strict',
-//       maxAge: 7 * 24 * 60 * 60 * 1000,
-//     })
-//     .json({ success: true, accessToken, roles: user.roles });
-// };
-
-
-
-// exports.storeSession = async (userId, token, req) => {
-//   const sessionKey = `session:${userId}:${token}`;
-//   const metadata = {
-//     ip: req.ip,
-//     userAgent: req.headers['user-agent'],
-//     createdAt: new Date().toISOString()
-//   };
-//   await redis.set(sessionKey, JSON.stringify(metadata), 'EX', 7 * 24 * 60 * 60);
-// };
-
-// exports.listSessions = async (req, res) => {
-//   const userId = req.user.id;
-//   const keys = await redis.keys(`session:${userId}:*`);
-//   const sessions = await Promise.all(keys.map(async key => ({
-//     token: key.split(':')[2],
-//     metadata: JSON.parse(await redis.get(key))
-//   })));
-//   res.json({ success: true, sessions });
-// };
-
-
-// exports.logoutAllDevices = async (req, res) => {
-//   const userId = req.user.id;
-//   const keys = await redis.keys(`session:${userId}:*`);
-//   if (keys.length) await redis.del(...keys);
-//   res.clearCookie('refreshToken');
-//   res.json({ success: true, message: 'Logged out from all devices' });
-// };
-
-
-// exports.logout = async (req, res) => {
-//   try {
-//     const refreshToken = req.cookies.refreshToken;
-//     if (refreshToken) {
-//       const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
-//       const key = `session:${decoded.id}:${decoded.sessionId}`;
-//       await redis.del(key);
-//     }
-//   } catch (err) {
-//     console.error('Logout error (token may be expired):', err.message);
-//   }
-
-//   res.clearCookie('refreshToken', {
-//     httpOnly: true,
-//     secure: process.env.NODE_ENV === 'production',
-//     sameSite: 'Strict',
-//   });
-//   res.json({ success: true, message: 'Logged out' });
-// };
-
-const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const { v4: uuidv4 } = require('uuid');
-const User = require('../models/User');
-const { storeSession } = require('../utils/sessionUtils');
-const { sendAuthEvent, sendAuditEvent } = require('../services/kafkaProducer');
+const jwt = require('jsonwebtoken');
+const redis = require('../config/redis');
 const jwtConfig = require('../config/jwt');
+const securityConfig = require('../config/security');
+const sendEmail = require('../utils/sendEmail');
+const logger = require('../utils/logger');
+const bruteForceProtection = require('../utils/antifraud');
+const sessionValidator = require('../middlewares/sessionValidation');
+const detectAnomalies = require('../middlewares/anomalyDetection');
+const AuditLog = require('../models/AuditLog');
+const User = require('../models/User');
 
+const validatePassword = (password) => {
+  const { minLength, requireUppercase, requireNumber, requireSpecialChar } = securityConfig.passwordPolicy;
+  if (password.length < minLength) return false;
+  if (requireUppercase && !/[A-Z]/.test(password)) return false;
+  if (requireNumber && !/[0-9]/.test(password)) return false;
+  if (requireSpecialChar && !/[^A-Za-z0-9]/.test(password)) return false;
+  return true;
+};
+
+// ------------------ Auth Controller ------------------
+
+// Register
 exports.register = async (req, res) => {
+  const { name, email, password } = req.body;
   try {
-    const { name, email, password } = req.body;
-    
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      await sendAuthEvent({
-        action: 'REGISTER_ATTEMPT',
-        status: 'failed',
-        reason: 'email_exists',
-        email
-      });
-      return res.status(400).json({ message: 'Email already in use' });
+    if (!validatePassword(password)) {
+      await AuditLog.create(null, 'REGISTER_ATTEMPT', { status: 'failed', reason: 'weak_password', email });
+      return res.status(400).json({ message: 'Password does not meet requirements' });
     }
 
-    const user = await User.create({ name, email, password });
-    
-    await sendAuthEvent({
-      action: 'REGISTER',
-      status: 'success',
-      userId: user.id,
-      email
-    });
+    const existingUser = await User.findByEmail(email);
+    if (existingUser) {
+      await AuditLog.create(null, 'REGISTER_ATTEMPT', { status: 'failed', reason: 'email_exists', email });
+      return res.status(409).json({ message: 'Email already in use' });
+    }
 
-    res.status(201).json({ message: 'User registered successfully' });
+    const user = await User.create(name, email, password);
+
+    const verificationToken = uuidv4();
+    await redis.set(`verify:${verificationToken}`, user.id, 'EX', 60 * 60);
+
+    const verificationLink = `${process.env.BASE_URL}/auth/verify-email?token=${verificationToken}`;
+    await sendEmail(
+      email, 
+      'Verify Your Email', 
+      'Click the link to verify your email', 
+      `<p>Click <a href="${verificationLink}">here</a> to verify your email.</p>`
+    );
+
+    await AuditLog.create(user.id, 'REGISTER', { status: 'success', email });
+    res.status(201).json({ message: 'Registered successfully. Please verify your email.' });
   } catch (error) {
-    await sendAuthEvent({
-      action: 'REGISTER',
-      status: 'failed',
-      error: error.message
-    });
+    logger.error('Register error:', error);
+    await AuditLog.create(null, 'REGISTER', { status: 'failed', error: error.message });
     res.status(500).json({ message: 'Registration failed' });
   }
 };
 
-exports.login = async (req, res) => {
+// Verify Email
+exports.verifyEmail = async (req, res) => {
+  const { token } = req.query;
   try {
-    const { email, password } = req.body;
-    const user = await User.findOne({ email });
-    
-    if (!user || !(await bcrypt.compare(password, user.password))) {
-      await sendAuthEvent({
-        action: 'LOGIN_ATTEMPT',
-        status: 'failed',
-        reason: 'invalid_credentials',
-        email
-      });
-      return res.status(401).json({ message: 'Invalid credentials' });
+    const userId = await redis.get(`verify:${token}`);
+    if (!userId) {
+      return res.status(400).json({ message: 'Invalid or expired token' });
     }
 
-    const payload = { 
-      id: user.id, 
-      email: user.email, 
-      roles: user.roles 
-    };
+    await User.markEmailVerified(userId);
+    await redis.del(`verify:${token}`);
 
-    const accessToken = jwt.sign(payload, jwtConfig.accessToken.secret, { 
-      expiresIn: jwtConfig.accessToken.expiresIn 
-    });
-
-    const sessionId = uuidv4();
-    const refreshToken = jwt.sign(
-      { ...payload, sessionId },
-      jwtConfig.refreshToken.secret,
-      { expiresIn: jwtConfig.refreshToken.expiresIn }
-    );
-
-    await storeSession(user.id, sessionId, req);
-
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000
-    });
-
-    await sendAuditEvent({
-      action: 'LOGIN',
-      userId: user.id,
-      ip: req.ip,
-      userAgent: req.headers['user-agent'],
-      metadata: {
-        sessionId,
-        authMethod: 'password'
-      }
-    });
-
-    res.json({ 
-      accessToken, 
-      user: { id: user.id, email: user.email, roles: user.roles } 
-    });
+    await AuditLog.create(userId, 'EMAIL_VERIFICATION', { status: 'success' });
+    res.json({ message: 'Email verified successfully' });
   } catch (error) {
-    await sendAuthEvent({
-      action: 'LOGIN',
-      status: 'failed',
-      error: error.message
-    });
-    res.status(500).json({ message: 'Login failed' });
+    logger.error('Email verification error:', error);
+    await AuditLog.create(null, 'EMAIL_VERIFICATION', { status: 'failed', error: error.message });
+    res.status(500).json({ message: 'Email verification failed' });
   }
 };
 
-// Other controller methods follow similar pattern...
+// Login
+exports.login = [
+  bruteForceProtection,
+  async (req, res) => {
+    const { email, password } = req.body;
+    try {
+      const user = await User.findByEmail(email);
+      if (!user) {
+        await AuditLog.create(null, 'LOGIN_ATTEMPT', { status: 'failed', reason: 'user_not_found', email });
+        return res.status(401).json({ message: 'Invalid credentials' });
+      }
+
+      const passwordMatch = await bcrypt.compare(password, user.password);
+      if (!passwordMatch) {
+        await AuditLog.create(null, 'LOGIN_ATTEMPT', { status: 'failed', reason: 'invalid_password', email });
+        return res.status(401).json({ message: 'Invalid credentials' });
+      }
+
+      if (!user.emailverified) {
+        await AuditLog.create(user.id, 'LOGIN_ATTEMPT', { status: 'failed', reason: 'email_not_verified' });
+        return res.status(403).json({ message: 'Email not verified' });
+      }
+
+      const payload = { id: user.id, email: user.email, roles: user.roles };
+      const accessToken = jwt.sign(payload, jwtConfig.accessToken.secret, { expiresIn: jwtConfig.accessToken.expiresIn });
+
+      const sessionId = uuidv4();
+      const refreshToken = jwt.sign({ ...payload, sessionId }, jwtConfig.refreshToken.secret, { expiresIn: jwtConfig.refreshToken.expiresIn });
+
+      await redis.set(
+        `session:${user.id}:${sessionId}`,
+        JSON.stringify({ ip: req.ip, userAgent: req.headers['user-agent'], createdAt: new Date().toISOString() }),
+        'EX',
+        7 * 24 * 60 * 60
+      );
+
+      res.cookie('refreshToken', refreshToken, securityConfig.session.cookieOptions);
+
+      await AuditLog.create(user.id, 'LOGIN', { 
+        status: 'success',
+        ip: req.ip,
+        userAgent: req.headers['user-agent'],
+        sessionId
+      });
+
+      res.json({ accessToken, user: { id: user.id, email: user.email, roles: user.roles } });
+    } catch (error) {
+      logger.error('Login error:', error);
+      await AuditLog.create(null, 'LOGIN', { status: 'failed', error: error.message });
+      res.status(500).json({ message: 'Login failed' });
+    }
+  }
+];
+
+// Refresh Token (unchanged, as it doesn't directly interact with User model)
+exports.refreshToken = [
+  sessionValidator,
+  detectAnomalies,
+  async (req, res) => {
+    const { refreshToken } = req.cookies;
+    if (!refreshToken) return res.status(401).json({ message: 'Refresh token required' });
+
+    try {
+      const decoded = jwt.verify(refreshToken, jwtConfig.refreshToken.secret);
+
+      const sessionKey = `session:${decoded.id}:${decoded.sessionId}`;
+      const sessionData = await redis.get(sessionKey);
+      if (!sessionData) {
+        return res.status(403).json({ message: 'Invalid session' });
+      }
+
+      const payload = { id: decoded.id, email: decoded.email, roles: decoded.roles };
+      const newAccessToken = jwt.sign(payload, jwtConfig.accessToken.secret, { expiresIn: jwtConfig.accessToken.expiresIn });
+
+      const newSessionId = uuidv4();
+      const newRefreshToken = jwt.sign({ ...payload, sessionId: newSessionId }, jwtConfig.refreshToken.secret, { expiresIn: jwtConfig.refreshToken.expiresIn });
+
+      await redis.multi()
+        .del(sessionKey)
+        .set(
+          `session:${decoded.id}:${newSessionId}`,
+          JSON.stringify({ ip: req.ip, userAgent: req.headers['user-agent'], createdAt: new Date().toISOString() }),
+          'EX',
+          7 * 24 * 60 * 60
+        )
+        .exec();
+
+      res.cookie('refreshToken', newRefreshToken, securityConfig.session.cookieOptions);
+
+      await AuditLog.create(decoded.id, 'TOKEN_REFRESH', { 
+        oldSessionId: decoded.sessionId, 
+        newSessionId,
+        ip: req.ip,
+        userAgent: req.headers['user-agent']
+      });
+
+      res.json({ accessToken: newAccessToken });
+    } catch (error) {
+      logger.error('Token refresh error:', error);
+      await AuditLog.create(null, 'TOKEN_REFRESH', { status: 'failed', error: error.message });
+      res.status(500).json({ message: 'Token refresh failed' });
+    }
+  }
+];
+
+// Logout (unchanged, as it doesn't directly interact with User model)
+exports.logout = async (req, res) => {
+  const { refreshToken } = req.cookies;
+  try {
+    if (refreshToken) {
+      const decoded = jwt.verify(refreshToken, jwtConfig.refreshToken.secret);
+      await redis.del(`session:${decoded.id}:${decoded.sessionId}`);
+      await AuditLog.create(decoded.id, 'LOGOUT', { sessionId: decoded.sessionId });
+    }
+    res.clearCookie('refreshToken', securityConfig.session.cookieOptions);
+    res.json({ message: 'Logged out successfully' });
+  } catch (error) {
+    logger.error('Logout error:', error);
+    res.clearCookie('refreshToken', securityConfig.session.cookieOptions);
+    await AuditLog.create(null, 'LOGOUT', { status: 'failed', error: error.message });
+    res.status(500).json({ message: 'Logout failed' });
+  }
+};
+
+// Request Password Reset
+exports.requestPasswordReset = async (req, res) => {
+  const { email } = req.body;
+  try {
+    const user = await User.findByEmail(email);
+    if (user) {
+      const resetToken = uuidv4();
+      await redis.set(`reset:${resetToken}`, user.id, 'EX', 30 * 60);
+
+      const resetLink = `${process.env.BASE_URL}/auth/reset-password?token=${resetToken}`;
+      await sendEmail(
+        email, 
+        'Password Reset', 
+        'Click the link to Password Reset', 
+        `<p>Click <a href="${resetLink}">here</a> to reset your password.</p>`
+      );
+
+      await AuditLog.create(user.id, 'PASSWORD_RESET_REQUEST', { status: 'success' });
+    }
+
+    res.json({ message: 'If the email is registered, you will receive a reset link.' });
+  } catch (error) {
+    logger.error('Password reset request error:', error);
+    await AuditLog.create(null, 'PASSWORD_RESET_REQUEST', { status: 'failed', error: error.message });
+    res.status(500).json({ message: 'Password reset request failed' });
+  }
+};
+
+// Reset Password
+exports.resetPassword = async (req, res) => {
+  const { token } = req.query;
+  const { newPassword } = req.body;
+  try {
+    if (!validatePassword(newPassword)) {
+      return res.status(400).json({ message: 'Password does not meet requirements' });
+    }
+
+    const userId = await redis.get(`reset:${token}`);
+    if (!userId) {
+      return res.status(400).json({ message: 'Invalid or expired token' });
+    }
+
+    await User.updatePassword(userId, newPassword);
+    await redis.del(`reset:${token}`);
+
+    await AuditLog.create(userId, 'PASSWORD_RESET', { status: 'success' });
+    res.json({ message: 'Password reset successfully' });
+  } catch (error) {
+    logger.error('Password reset error:', error);
+    await AuditLog.create(null, 'PASSWORD_RESET', { status: 'failed', error: error.message });
+    res.status(500).json({ message: 'Password reset failed' });
+  }
+};
