@@ -30,11 +30,11 @@ const ShortenPage = () => {
   const onSubmit = async (data: ShortenFormData) => {
     try {
       setIsLoading(true);
-      const newUrl = await addUrl(
-        data.url, 
-        data.customSlug || undefined, 
-        data.expiresAt || undefined
-      );
+      const newUrl = await addUrl({
+        originalUrl: data.url, 
+        customAlias: data.customSlug || undefined, 
+        expiresAt: data.expiresAt || undefined
+      });
       
       setShortenedURL(newUrl.shortUrl);
       toast.success('URL shortened successfully!');

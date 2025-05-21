@@ -1,6 +1,6 @@
 // utils/anomalyDetection.js
 const redis = require('../config/redis'); // Adjust the path as necessary
-
+const User = require('../models/User'); // Adjust the path as necessary
 const detectAnomalies = async (req, res, next) => {
   const { email } = req.body;
   const user = await User.findByEmail(email);

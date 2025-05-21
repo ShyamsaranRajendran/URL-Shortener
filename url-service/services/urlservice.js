@@ -83,6 +83,10 @@ const UrlService = {
   async getUserUrls(userId) {
     return await Url.findByUserId(userId);
   }
+  ,
+  async getAllUrls() {
+    return await Url.findAll();
+  }
 }
 
 module.exports = UrlService;

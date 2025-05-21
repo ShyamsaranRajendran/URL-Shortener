@@ -8,8 +8,6 @@ require('./config/db'); // Initialize DB connection
 
 const app = express();
 
-// Middleware
-app.use(cors());
 app.use(helmet());
 app.use(express.json());
 

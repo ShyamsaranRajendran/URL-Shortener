@@ -7,6 +7,8 @@ import CopyButton from './CopyButton';
 
 interface ShortenerFormData {
   url: string;
+  customAlias?: string;
+  expiresAt?: string;
 }
 
 const URLShortener = () => {
@@ -18,12 +20,20 @@ const URLShortener = () => {
   const onSubmit = async (data: ShortenerFormData) => {
     try {
       setIsLoading(true);
-      const newUrl = await addUrl(data.url);
-      setShortenedUrl(newUrl.shortUrl);
-      toast.success('URL shortened successfully!');
-      reset();
-    } catch (error) {
-      toast.error('Failed to shorten URL. Please try again.');
+      const newUrl = await addUrl({
+        originalUrl: data.url,
+        customAlias: data.customAlias,
+        expiresAt: data.expiresAt,
+      });
+      if (newUrl?.shortUrl) {
+        setShortenedUrl(newUrl.shortUrl);
+        toast.success('URL shortened successfully!');
+        reset();
+      } else {
+        throw new Error('Invalid response from server');
+      }
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to shorten URL. Please try again.');
       console.error(error);
     } finally {
       setIsLoading(false);
@@ -41,30 +51,42 @@ const URLShortener = () => {
           Paste your long URL to create a shorter, more manageable link
         </p>
       </div>
-      
+
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="flex-grow">
-            <input
-              type="url"
-              placeholder="Enter your long URL here"
-              className={`input-field ${errors.url ? 'border-error focus:border-error focus:ring-error/20' : ''}`}
-              {...register('url', { 
-                required: 'URL is required',
-                pattern: {
-                  value: /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/,
-                  message: 'Please enter a valid URL'
-                }
-              })}
-              disabled={isLoading}
-            />
-            {errors.url && (
-              <p className="mt-1 text-sm text-error">{errors.url.message}</p>
-            )}
-          </div>
-          <button 
-            type="submit" 
-            className={`btn btn-primary whitespace-nowrap ${
+        <div className="flex flex-col gap-3">
+          <input
+            type="url"
+            placeholder="Enter your long URL here"
+            className={`input-field ${errors.url ? 'border-error focus:border-error focus:ring-error/20' : ''}`}
+            {...register('url', {
+              required: 'URL is required',
+              pattern: {
+                value: /^https?:\/\/\S+$/,
+                message: 'Please enter a valid URL',
+              },
+            })}
+            disabled={isLoading}
+          />
+          {errors.url && <p className="mt-1 text-sm text-error">{errors.url.message}</p>}
+
+          <input
+            type="text"
+            placeholder="Custom alias (optional)"
+            className="input-field"
+            {...register('customAlias')}
+            disabled={isLoading}
+          />
+
+          <input
+            type="datetime-local"
+            className="input-field"
+            {...register('expiresAt')}
+            disabled={isLoading}
+          />
+
+          <button
+            type="submit"
+            className={`btn btn-primary ${
               isLoading ? 'opacity-70 cursor-not-allowed' : ''
             }`}
             disabled={isLoading}
@@ -80,7 +102,7 @@ const URLShortener = () => {
           </button>
         </div>
       </form>
-      
+
       {shortenedUrl && (
         <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-100 animate-fade-in">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">

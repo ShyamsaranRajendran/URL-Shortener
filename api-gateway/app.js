@@ -8,10 +8,20 @@ const errorHandler = require('./utils/errorHandler');
 const rateLimiter = require('./middlewares/rateLimit');
 const authenticate = require('./middlewares/auth'); // ⛔ Import the authentication middleware
 const app = express();
+const cors = require('cors');
+const helmet = require('helmet');
 
 app.use(requestLogger);
 app.use(rateLimiter); 
-
+app.use(cors({
+  origin: 'http://localhost:5173',  // React dev server origin
+  credentials: true // if you are sending cookies or auth headers
+}));
+// app.use(cors({
+//   origin:['http://localhost:5173','http://localhost:80'],
+//   credentials: true
+// }));
+app.use(helmet());
 app.use('/auth', createProxyMiddleware(proxyConfig(USER_SERVICE_URL, { '^/auth': '' })));
 app.use('/url', createProxyMiddleware(proxyConfig(URL_SERVICE_URL, { '^/url': '' })));
 
@@ -23,3 +33,4 @@ const PORT = 3000;
 app.listen(PORT, () => {
   console.log(`Gateway running on http://localhost:${PORT}`);
 });
+ 

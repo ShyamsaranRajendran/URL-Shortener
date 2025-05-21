@@ -3,9 +3,9 @@ import { useForm } from 'react-hook-form';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { LogIn, Lock, Mail } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'react-toastify';
-// const backendUrl = process.env.NEXT_PUBLIC_BACKEND_SERVICE_URL;
+import { useAuth } from '../contexts/AuthContext';
+
 interface LoginFormData {
   email: string;
   password: string;
@@ -13,34 +13,59 @@ interface LoginFormData {
 }
 
 const LoginPage = () => {
-  const { login } = useAuth();
-  const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
-  
-  const { 
-    register, 
-    handleSubmit, 
-    formState: { errors } 
+  const { login } = useAuth(); // optional wrapper
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors }
   } = useForm<LoginFormData>({
     defaultValues: {
-      email: 'demo@example.com',
-      password: 'password',
+      email: '',
+      password: '',
       rememberMe: false
     }
   });
 
-  const onSubmit = async (data: LoginFormData) => {
-    try {
-      setIsLoading(true);
-      await login(data.email, data.password);
-      toast.success('Login successful!');
-      navigate('/dashboard');
-    } catch (error) {
-      toast.error('Invalid email or password. Please try again.');
-    } finally {
-      setIsLoading(false);
+const onSubmit = async (data: LoginFormData) => {
+  try {
+    setIsLoading(true);
+
+    await login(data.email, data.password);
+    toast.success('Login successful');
+    localStorage.setItem('email', data.email)
+  } catch (error: any) {
+    console.error("Login error:", error);
+
+    if (error.response) {
+      // Backend responded with a status code outside 2xx
+      const status = error.response.status;
+      const msg = error.response.data?.message || 'An error occurred';
+
+      if (status === 401) {
+        toast.error('Invalid email or password');
+      } else if (status === 400) {
+        toast.error(`Validation failed: ${msg}`);
+      } else if (status >= 500) {
+        toast.error('Server error. Please try again later.');
+      } else {
+        toast.error(msg);
+      }
+
+    } else if (error.request) {
+      // No response received
+      toast.error('No response from server. Please check your connection.');
+    } else {
+      // Error setting up the request
+      toast.error(error.message || 'Unexpected error occurred.');
     }
-  };
+
+  } finally {
+    setIsLoading(false);
+  }
+};
+
 
   return (
     <motion.div
@@ -60,10 +85,9 @@ const LoginPage = () => {
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        {/* Email */}
         <div>
-          <label htmlFor="email" className="label">
-            Email
-          </label>
+          <label htmlFor="email" className="label">Email</label>
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
               <Mail size={16} className="text-gray-400" />
@@ -71,7 +95,7 @@ const LoginPage = () => {
             <input
               id="email"
               type="email"
-              className={`input-field pl-10 ${errors.email ? 'border-error focus:border-error focus:ring-error/20' : ''}`}
+              className={`input-field pl-10 ${errors.email ? 'border-error focus:border-error' : ''}`}
               placeholder="you@example.com"
               {...register('email', {
                 required: 'Email is required',
@@ -82,19 +106,14 @@ const LoginPage = () => {
               })}
             />
           </div>
-          {errors.email && (
-            <p className="mt-1 text-sm text-error">{errors.email.message}</p>
-          )}
+          {errors.email && <p className="mt-1 text-sm text-error">{errors.email.message}</p>}
         </div>
 
+        {/* Password */}
         <div>
           <div className="flex items-center justify-between">
-            <label htmlFor="password" className="label">
-              Password
-            </label>
-            <a href="#" className="text-sm font-medium text-primary hover:text-primary-dark">
-              Forgot password?
-            </a>
+            <label htmlFor="password" className="label">Password</label>
+            <a href="#" className="text-sm font-medium text-primary hover:text-primary-dark">Forgot password?</a>
           </div>
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -103,7 +122,7 @@ const LoginPage = () => {
             <input
               id="password"
               type="password"
-              className={`input-field pl-10 ${errors.password ? 'border-error focus:border-error focus:ring-error/20' : ''}`}
+              className={`input-field pl-10 ${errors.password ? 'border-error focus:border-error' : ''}`}
               placeholder="••••••••"
               {...register('password', {
                 required: 'Password is required',
@@ -114,11 +133,10 @@ const LoginPage = () => {
               })}
             />
           </div>
-          {errors.password && (
-            <p className="mt-1 text-sm text-error">{errors.password.message}</p>
-          )}
+          {errors.password && <p className="mt-1 text-sm text-error">{errors.password.message}</p>}
         </div>
 
+        {/* Remember Me */}
         <div className="flex items-center">
           <input
             id="remember-me"
@@ -131,24 +149,29 @@ const LoginPage = () => {
           </label>
         </div>
 
+        {/* Submit */}
         <div>
-          <button
-            type="submit"
-            className={`btn btn-primary w-full flex justify-center ${
-              isLoading ? 'opacity-70 cursor-not-allowed' : ''
-            }`}
-            disabled={isLoading}
-          >
-            {isLoading ? (
-              <>
-                <span className="inline-block h-4 w-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                Signing in...
-              </>
-            ) : (
-              'Sign in'
-            )}
-          </button>
-        </div>
+  <button
+    type="submit"
+    className={`btn btn-primary w-full flex justify-center ${isLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
+    disabled={isLoading}
+    onClick={(e) => {
+      if (isLoading) {
+        e.preventDefault(); // prevent form submission if loading
+      }
+    }}
+  >
+    {isLoading ? (
+      <>
+        <span className="inline-block h-4 w-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+        Signing in...
+      </>
+    ) : (
+      'Sign in'
+    )}
+  </button>
+</div>
+
       </form>
 
       <div className="mt-6 text-center">

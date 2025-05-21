@@ -1,4 +1,4 @@
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const jwt = require('jsonwebtoken');
 const redis = require('../config/redis');
@@ -86,6 +86,10 @@ exports.login = [
   bruteForceProtection,
   async (req, res) => {
     const { email, password } = req.body;
+    console.log('Email:', req.body.email);
+console.log('Password:', req.body.password);
+
+
     try {
       const user = await User.findByEmail(email);
       if (!user) {
@@ -94,43 +98,81 @@ exports.login = [
       }
 
       const passwordMatch = await bcrypt.compare(password, user.password);
+      console.log('Password Match:', passwordMatch);
+const hashedPassword = await bcrypt.hash( user.password, 10);  // Hash the password
+console.log(hashedPassword);
       if (!passwordMatch) {
-        await AuditLog.create(null, 'LOGIN_ATTEMPT', { status: 'failed', reason: 'invalid_password', email });
+        await AuditLog.create(user.id, 'LOGIN_ATTEMPT', { status: 'failed', reason: 'invalid_password' });
         return res.status(401).json({ message: 'Invalid credentials' });
       }
 
-      if (!user.emailverified) {
+      if (!user.email_verified) {
         await AuditLog.create(user.id, 'LOGIN_ATTEMPT', { status: 'failed', reason: 'email_not_verified' });
         return res.status(403).json({ message: 'Email not verified' });
       }
 
       const payload = { id: user.id, email: user.email, roles: user.roles };
-      const accessToken = jwt.sign(payload, jwtConfig.accessToken.secret, { expiresIn: jwtConfig.accessToken.expiresIn });
+
+      const accessToken = jwt.sign(
+        payload,
+        jwtConfig.accessToken.secret,
+        { expiresIn: jwtConfig.accessToken.expiresIn }
+      );
 
       const sessionId = uuidv4();
-      const refreshToken = jwt.sign({ ...payload, sessionId }, jwtConfig.refreshToken.secret, { expiresIn: jwtConfig.refreshToken.expiresIn });
+
+      const refreshToken = jwt.sign(
+        { ...payload, sessionId },
+        jwtConfig.refreshToken.secret,
+        { expiresIn: jwtConfig.refreshToken.expiresIn }
+      );
 
       await redis.set(
         `session:${user.id}:${sessionId}`,
-        JSON.stringify({ ip: req.ip, userAgent: req.headers['user-agent'], createdAt: new Date().toISOString() }),
+        JSON.stringify({
+          ip: req.ip,
+          userAgent: req.headers['user-agent'],
+          createdAt: new Date().toISOString()
+        }),
         'EX',
-        7 * 24 * 60 * 60
+        7 * 24 * 60 * 60 // 7 days
       );
 
-      res.cookie('refreshToken', refreshToken, securityConfig.session.cookieOptions);
+      res.cookie('refreshToken', refreshToken, {
+        ...securityConfig.session.cookieOptions,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'Strict'
+      });
 
-      await AuditLog.create(user.id, 'LOGIN', { 
+      await AuditLog.create(user.id, 'LOGIN', {
         status: 'success',
         ip: req.ip,
         userAgent: req.headers['user-agent'],
         sessionId
       });
+      console.log('Access Token:', accessToken);
+      console.log('Refresh Token:', refreshToken);
+      console.log('User:', user);
+      console.log('login successful');
+      res.status(200).json({
+        accessToken,
+        user: {
+          id: user.id,
+          email: user.email,
+          roles: user.roles
+        }
+      });
 
-      res.json({ accessToken, user: { id: user.id, email: user.email, roles: user.roles } });
     } catch (error) {
       logger.error('Login error:', error);
-      await AuditLog.create(null, 'LOGIN', { status: 'failed', error: error.message });
-      res.status(500).json({ message: 'Login failed' });
+      console.log('Login error:', error);
+      await AuditLog.create(null, 'LOGIN_ERROR', {
+        status: 'failed',
+        error: error.message,
+        email
+      });
+      res.status(500).json({err:error, message: 'Internal server error during login' });
     }
   }
 ];
@@ -138,7 +180,7 @@ exports.login = [
 // Refresh Token (unchanged, as it doesn't directly interact with User model)
 exports.refreshToken = [
   sessionValidator,
-  detectAnomalies,
+  // detectAnomalies,
   async (req, res) => {
     const { refreshToken } = req.cookies;
     if (!refreshToken) return res.status(401).json({ message: 'Refresh token required' });
@@ -177,7 +219,15 @@ exports.refreshToken = [
         userAgent: req.headers['user-agent']
       });
 
-      res.json({ accessToken: newAccessToken });
+      res.json({
+  accessToken: newAccessToken,
+  user: {
+    id: payload.id,
+    email: payload.email,
+    roles: payload.roles,
+  },
+});
+
     } catch (error) {
       logger.error('Token refresh error:', error);
       await AuditLog.create(null, 'TOKEN_REFRESH', { status: 'failed', error: error.message });

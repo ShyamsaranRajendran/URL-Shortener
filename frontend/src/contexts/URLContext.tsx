@@ -1,124 +1,90 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
-import { format } from 'date-fns';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 
-export interface URLData {
-  id: string;
+interface Url {
   originalUrl: string;
   shortUrl: string;
-  slug: string;
+  short_code: string;
+  customAlias?: string;
+  expiresAt?: string;
   clicks: number;
   createdAt: string;
+}
+
+interface AddUrlParams {
+  originalUrl: string;
+  customAlias?: string;
   expiresAt?: string;
-  userId: string;
 }
 
 interface URLContextType {
-  urls: URLData[];
-  addUrl: (originalUrl: string, customSlug?: string, expiresAt?: string) => Promise<URLData>;
-  getUrlById: (id: string) => URLData | undefined;
-  incrementClicks: (id: string) => void;
-  deleteUrl: (id: string) => void;
+  urls: Url[];
+  addUrl: (data: AddUrlParams) => Promise<Url>;
+  fetchUrls: () => Promise<void>;
 }
 
 const URLContext = createContext<URLContextType | undefined>(undefined);
 
-export function useURL() {
-  const context = useContext(URLContext);
-  if (context === undefined) {
-    throw new Error('useURL must be used within an URLProvider');
-  }
-  return context;
-}
+export const URLProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [urls, setUrls] = useState<Url[]>([]);
 
-// Mock data
-const mockUrls: URLData[] = [
-  {
-    id: '1',
-    originalUrl: 'https://www.example.com/very/long/path/to/some/resource/that/is/important',
-    shortUrl: 'https://sho.rt/abc123',
-    slug: 'abc123',
-    clicks: 42,
-    createdAt: format(new Date('2025-01-15'), 'yyyy-MM-dd'),
-    userId: '1'
-  },
-  {
-    id: '2',
-    originalUrl: 'https://www.anotherexample.com/blog/top-10-reasons-to-use-url-shorteners',
-    shortUrl: 'https://sho.rt/def456',
-    slug: 'def456',
-    clicks: 28,
-    createdAt: format(new Date('2025-02-10'), 'yyyy-MM-dd'),
-    userId: '1'
-  },
-  {
-    id: '3',
-    originalUrl: 'https://www.docs.example.com/api/reference/v2/newest-features',
-    shortUrl: 'https://sho.rt/ghi789',
-    slug: 'ghi789',
-    clicks: 105,
-    createdAt: format(new Date('2025-03-05'), 'yyyy-MM-dd'),
-    expiresAt: format(new Date('2025-06-05'), 'yyyy-MM-dd'),
-    userId: '1'
-  }
-];
-
-export function URLProvider({ children }: { children: ReactNode }) {
-  const [urls, setUrls] = useState<URLData[]>(mockUrls);
-
-  const generateRandomSlug = (): string => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    let result = '';
-    for (let i = 0; i < 6; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
+  // Fetch user's URLs from backend
+  const fetchUrls = async () => {
+    try {
+      const res = await fetch('http://localhost:3000/url/list12', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to fetch URLs');
+      const data = await res.json();
+      setUrls(data.urls || []);
+    } catch (err) {
+      console.error(err);
+      setUrls([]);
     }
-    return result;
   };
 
-  const addUrl = async (originalUrl: string, customSlug?: string, expiresAt?: string): Promise<URLData> => {
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    const slug = customSlug || generateRandomSlug();
-    const shortUrl = `https://sho.rt/${slug}`;
-    
-    const newUrl: URLData = {
-      id: Date.now().toString(),
-      originalUrl,
-      shortUrl,
-      slug,
-      clicks: 0,
-      createdAt: format(new Date(), 'yyyy-MM-dd'),
-      expiresAt: expiresAt ? format(new Date(expiresAt), 'yyyy-MM-dd') : undefined,
-      userId: '1' // In a real app, this would be the current user's ID
-    };
-    
-    setUrls(prevUrls => [newUrl, ...prevUrls]);
+  useEffect(() => {
+    fetchUrls();
+  }, []);
+
+  const addUrl = async (data: AddUrlParams) => {
+    const res = await fetch('http://localhost:3000/url/shorten', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+      credentials: 'include',
+    });
+
+    if (!res.ok) {
+      const error = await res.json();
+      throw new Error(error?.error || 'Failed to shorten URL');
+    }
+
+    const result = await res.json();
+    const shortUrl = `${window.location.origin}/url/${result.short_code}`;
+
+    const newUrl = { ...result, shortUrl };
+    setUrls(prev => [newUrl, ...prev]); // add to list immediately
+
     return newUrl;
   };
 
-  const getUrlById = (id: string): URLData | undefined => {
-    return urls.find(url => url.id === id);
-  };
+  return (
+    <URLContext.Provider value={{ urls, addUrl, fetchUrls }}>
+      {children}
+    </URLContext.Provider>
+  );
+};
 
-  const incrementClicks = (id: string): void => {
-    setUrls(prevUrls => 
-      prevUrls.map(url => 
-        url.id === id ? { ...url, clicks: url.clicks + 1 } : url
-      )
-    );
-  };
-
-  const deleteUrl = (id: string): void => {
-    setUrls(prevUrls => prevUrls.filter(url => url.id !== id));
-  };
-
-  const value = {
-    urls,
-    addUrl,
-    getUrlById,
-    incrementClicks,
-    deleteUrl
-  };
-
-  return <URLContext.Provider value={value}>{children}</URLContext.Provider>;
-}
+export const useURL = (): URLContextType => {
+  const context = useContext(URLContext);
+  if (!context) {
+    throw new Error('useURL must be used within a URLProvider');
+  }
+  return context;
+};

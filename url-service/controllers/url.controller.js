@@ -20,13 +20,19 @@ exports.redirectUrl = async (req, res) => {
     const url = await UrlService.getUrl(code);
     await UrlService.incrementClicks(code);
 
-    if (!url) return res.status(404).json({ error: 'URL not found' });
+    if (!url) {
+      // Make sure the redirect URL has the correct protocol
+      return res.redirect('http://localhost:5173/not-found'); 
+    }
 
-    res.redirect(301, url.original_url);
+    const { original_url: URL } = url;
+    res.redirect(301, URL);
   } catch (error) {
+    console.error(error); // Log error for debugging
     res.status(500).json({ error: 'Server error' });
   }
 };
+
 
 exports.deleteUrl = async (req, res) => {
   try {
@@ -77,3 +83,14 @@ exports.getUserUrls = async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 };
+
+exports.getUrls = async (req, res) => {
+  try {
+    console.log('Fetching all URLs');
+    const urls = await UrlService.getAllUrls();
+     res.json({ success: true, data: urls });
+  } catch (error) {
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+

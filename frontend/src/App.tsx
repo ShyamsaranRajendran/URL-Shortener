@@ -14,6 +14,7 @@ import RegisterPage from './pages/RegisterPage';
 import DashboardPage from './pages/DashboardPage';
 import ShortenPage from './pages/ShortenPage';
 import AnalyticsPage from './pages/AnalyticsPage';
+import Redirect from './pages/Redirect';
 import NotFoundPage from './pages/NotFoundPage';
 
 // Components
@@ -27,7 +28,8 @@ function App() {
           {/* Public routes */}
           <Route element={<MainLayout />}>
             <Route path="/" element={<HomePage />} />
-            <Route path="*" element={<NotFoundPage />} />
+            <Route path="/url/:code" element={<Redirect />} />
+            <Route path="/not-found" element={<NotFoundPage />} />
           </Route>
 
           {/* Auth routes */}
