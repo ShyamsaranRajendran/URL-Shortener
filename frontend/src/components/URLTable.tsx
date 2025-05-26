@@ -1,17 +1,66 @@
-import { useState } from 'react';
+import { useState,useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { BarChart2, Trash2, ExternalLink } from 'lucide-react';
-import { useURL, URLData } from '../contexts/URLContext';
+import { useURL } from '../contexts/URLContext';
 import CopyButton from './CopyButton';
 import { toast } from 'react-toastify';
 
+
+interface Url {
+    id: string;                // ← REQUIRED!
+  originalUrl: string;
+  shortUrl: string;
+  short_code: string;
+  customAlias?: string;
+  expiresAt?: string;
+  clicks: number;
+  createdAt: string;
+}
+
+interface AddUrlParams {
+  originalUrl: string;
+  customAlias?: string;
+  expiresAt?: string;
+}
+
+interface URLContextType {
+  urls: Url[];
+  addUrl: (data: AddUrlParams) => Promise<Url>;
+  fetchUrls: () => Promise<void>;
+}
+
 const URLTable: React.FC = () => {
-  const { urls, deleteUrl } = useURL();
+  // const { urls } = useURL();
   const [selectedUrls, setSelectedUrls] = useState<string[]>([]);
+  
+   const [urls, setUrls] = useState<Url[]>([]);
+  
+    // Fetch user's URLs from backend
+    const fetchUrls = async () => {
+      try {
+        const res = await fetch('http://localhost:3000/url/list12', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+        });
+        if (!res.ok) throw new Error('Failed to fetch URLs');
+        const data = await res.json();
+        setUrls(data.data || []);
+      } catch (err) {
+        console.error(err);
+        setUrls([]);
+      }
+    };
+  
+    useEffect(() => {
+      fetchUrls();
+    }, []);
 
   const handleDelete = (id: string) => {
     if (confirm('Are you sure you want to delete this link?')) {
-      deleteUrl(id);
+      // deleteUrl(id);
       toast.success('Link deleted successfully');
     }
   };
@@ -32,15 +81,15 @@ const URLTable: React.FC = () => {
     }
   };
 
-  const handleBulkDelete = () => {
-    if (selectedUrls.length === 0) return;
+  // const handleBulkDelete = () => {
+  //   if (selectedUrls.length === 0) return;
     
-    if (confirm(`Are you sure you want to delete ${selectedUrls.length} links?`)) {
-      selectedUrls.forEach(id => deleteUrl(id));
-      setSelectedUrls([]);
-      toast.success(`${selectedUrls.length} links deleted successfully`);
-    }
-  };
+  //   if (confirm(`Are you sure you want to delete ${selectedUrls.length} links?`)) {
+  //     selectedUrls.forEach(id => deleteUrl(id));
+  //     setSelectedUrls([]);
+  //     toast.success(`${selectedUrls.length} links deleted successfully`);
+  //   }
+  // };
 
   const truncateUrl = (url: string, maxLength: number = 40) => {
     if (url.length <= maxLength) return url;
@@ -70,7 +119,7 @@ const URLTable: React.FC = () => {
             {selectedUrls.length} {selectedUrls.length === 1 ? 'item' : 'items'} selected
           </p>
           <button 
-            onClick={handleBulkDelete}
+            // onClick={handleBulkDelete}
             className="text-sm text-error hover:text-error-dark flex items-center"
           >
             <Trash2 size={16} className="mr-1" />
@@ -112,7 +161,7 @@ const URLTable: React.FC = () => {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {urls.map((url: URLData) => (
+            {urls.map((url) => (
               <tr key={url.id} className="hover:bg-gray-50 transition-colors">
                 <td className="px-4 py-4 whitespace-nowrap">
                   <input
@@ -130,7 +179,7 @@ const URLTable: React.FC = () => {
                       rel="noopener noreferrer"
                       className="text-primary hover:underline font-medium mr-2"
                     >
-                      {url.shortUrl.replace('https://', '')}
+                      {url.shortUrl.replace('https://','')}
                     </a>
                     <CopyButton textToCopy={url.shortUrl} />
                   </div>

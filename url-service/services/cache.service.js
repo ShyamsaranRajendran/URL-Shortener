@@ -9,6 +9,7 @@ class CacheService {
 
   static async set(key, value, ttl = 3600) {
     await redis.set(key, JSON.stringify(value), 'EX', ttl);
+    return value;
   }
 
   static async incr(key) {

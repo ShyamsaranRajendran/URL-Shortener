@@ -14,8 +14,8 @@ const helmet = require('helmet');
 app.use(requestLogger);
 app.use(rateLimiter); 
 app.use(cors({
-  origin: 'http://localhost:5173',  // React dev server origin
-  credentials: true // if you are sending cookies or auth headers
+  origin: 'http://localhost:5173', 
+  credentials: true 
 }));
 // app.use(cors({
 //   origin:['http://localhost:5173','http://localhost:80'],

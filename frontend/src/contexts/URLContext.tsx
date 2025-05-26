@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 
 interface Url {
+    id: string;                // ← REQUIRED!
   originalUrl: string;
   shortUrl: string;
   short_code: string;
@@ -80,6 +81,8 @@ export const URLProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     </URLContext.Provider>
   );
 };
+
+// Removed useURLData hook as useURL provides the correct context access.
 
 export const useURL = (): URLContextType => {
   const context = useContext(URLContext);

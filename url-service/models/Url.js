@@ -15,7 +15,7 @@ class Url {
 
   static async incrementClicks(value,shortCode) {
     await query(
-      'UPDATE urls SET clicks = $1 WHERE short_code = $2',
+      'UPDATE urls SET clicks =clicks + $1 WHERE short_code = $2',
       [value, shortCode]
     );
   }
@@ -66,7 +66,7 @@ class Url {
     const formatted = rows.map(row => ({
       id: row.id,
       originalUrl: row.original_url,
-      shortUrl: `${process.env.BASE_URL}/${row.short_code}`,
+      shortUrl: `${process.env.BASE_URL}/url/${row.short_code}`,
       clicks: row.clicks,
       createdAt: new Date(row.created_at).toLocaleString(),
       expiresAt: row.expires_at ? new Date(row.expires_at).toLocaleString() : null,

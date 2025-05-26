@@ -18,30 +18,48 @@ const UrlService = {
     return url;
   },
   
-  async getUrl(shortCode) {
-    const cacheKey = `url:${shortCode}`;
-    const cachedUrl = await CacheService.get(cacheKey);
-    if (cachedUrl) return cachedUrl;
+   async getUrl(shortCode) {
+    // const cacheKey = `url:${shortCode}`;
+    // let cachedUrl = await CacheService.get(cacheKey);
+
+    // if (cachedUrl) {
+    //   console.log(`Fetched URL from cache: ${shortCode}`);
+    //   return cachedUrl;
+    // }
 
     const url = await Url.findByShortCode(shortCode);
-    if (url) {
-      await CacheService.set(cacheKey, url);
-    }
+    console.log(`Fetched URL from DB: ${shortCode}`);
+    console.log(url)
+    // if (url) {
+    //   await CacheService.set(cacheKey, url);
+    //   console.log(`Fetched URL from DB and cached: ${shortCode}`);
+    // }
+
     return url;
   },
 
   async incrementClicks(shortCode) {
-    const cacheKey = `url-info:${shortCode}`;
-    let cachedUrl = await CacheService.get(cacheKey);
-  
-    if (cachedUrl) {
-      cachedUrl.clicks = parseInt(cachedUrl.clicks, 10) + 1;
-      await CacheService.set(cacheKey, cachedUrl);
-    }
-  
-    // await Url.incrementClicks(shortCode);
-  }
-,  
+    // const cacheKey = `url-info:${shortCode}`;
+    // let cachedClicks = await CacheService.get(cacheKey);
+
+    // if (cachedClicks && typeof cachedClicks.clicks !== 'undefined') {
+    //   cachedClicks.clicks = parseInt(cachedClicks.clicks, 10) + 1;
+    //   await CacheService.set(cacheKey, cachedClicks);
+    //   console.log(`Incremented clicks in cache for ${shortCode}: ${cachedClicks.clicks}`);
+    // } else {
+    //   const urlFromDB = await Url.findByShortCode({ short_code: shortCode });
+    //   if (!urlFromDB) {
+    //     console.warn(`URL not found for code: ${shortCode}`);
+    //     return;
+    //   }
+
+    //   const updatedClicks = (urlFromDB.clicks || 0) + 1;
+      await Url.incrementClicks(1 ,shortCode  );
+
+    //   await CacheService.set(cacheKey, { clicks: updatedClicks });
+    //   console.log(`Clicks set from DB for ${shortCode}: ${updatedClicks}`);
+    // }
+  },
 
   async deleteUrl(shortCode, userId) {
     const url = await Url.findByShortCode(shortCode);

@@ -1,3 +1,4 @@
+// src/pages/Redirect.tsx
 import { useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
@@ -6,7 +7,6 @@ const Redirect = () => {
 
   useEffect(() => {
     if (code) {
-      // Redirect directly to the backend endpoint
       window.location.href = `http://localhost:3000/url/${code}`;
     }
   }, [code]);

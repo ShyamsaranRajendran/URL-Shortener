@@ -13,22 +13,25 @@ exports.shortenUrl = async (req, res) => {
     res.status(400).json({ error: error.message });
   }
 };
-
 exports.redirectUrl = async (req, res) => {
   try {
     const { code } = req.params;
+    console.log('Redirecting URL with code:', code);
+
     const url = await UrlService.getUrl(code);
-    await UrlService.incrementClicks(code);
 
-    if (!url) {
-      // Make sure the redirect URL has the correct protocol
-      return res.redirect('http://localhost:5173/not-found'); 
-    }
+    // if (!url) {
+    //   console.warn(`URL not found: ${code}`);
+    //   return res.redirect('http://localhost:5173/not-found');
+    // }
 
-    const { original_url: URL } = url;
-    res.redirect(301, URL);
+    await UrlService.incrementClicks(code); // Move this after URL check
+    console.log(url)
+    const { original_url: originalUrl } = url;
+    console.log('Redirecting to:', originalUrl);
+    res.redirect(301, originalUrl);
   } catch (error) {
-    console.error(error); // Log error for debugging
+    console.error('Error in redirectUrl controller:', error);
     res.status(500).json({ error: 'Server error' });
   }
 };
@@ -86,7 +89,6 @@ exports.getUserUrls = async (req, res) => {
 
 exports.getUrls = async (req, res) => {
   try {
-    console.log('Fetching all URLs');
     const urls = await UrlService.getAllUrls();
      res.json({ success: true, data: urls });
   } catch (error) {
